@@ -1,0 +1,6 @@
+{
+  "name": "Ali & Rayan",
+  "description": "Local real-time multiplayer platform with study briefing summary, live interactive quiz, and word guessing game for classroom and LAN play.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
