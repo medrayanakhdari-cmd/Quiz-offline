@@ -9,6 +9,7 @@ import { HostScreen } from './components/HostScreen';
 import { PlayerScreen } from './components/PlayerScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { NetworkHelpModal } from './components/NetworkHelpModal';
+import { NetworkConfigModal } from './components/NetworkConfigModal';
 import { DEFAULT_QUESTIONS, DEFAULT_WORDS, DEFAULT_PROJECT_SUMMARY } from './data/defaultData';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNetworkHelpOpen, setIsNetworkHelpOpen] = useState(false);
+  const [isNetworkConfigOpen, setIsNetworkConfigOpen] = useState(false);
 
   // Default fallback state while socket connects
   const [gameState, setGameState] = useState<GameState>({
@@ -285,6 +287,11 @@ export default function App() {
     socket.emit('admin:update_project_summary', summary);
   };
 
+  const handleUpdateHostNetwork = (hostIp: string, hostPort: number) => {
+    const socket = getSocket();
+    socket.emit('admin:update_host_network', { hostIp, hostPort });
+  };
+
   // Player Actions
   const handleSubmitQuizAnswer = (choiceIndex: number) => {
     const socket = getSocket();
@@ -343,6 +350,7 @@ export default function App() {
         onToggleSound={handleToggleSound}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenNetworkHelp={() => setIsNetworkHelpOpen(true)}
+        onOpenNetworkConfig={() => setIsNetworkConfigOpen(true)}
         onSwitchMode={handleSwitchMode}
         onExitAdmin={handleExitAdmin}
         onExitUser={handleExitUser}
@@ -368,6 +376,7 @@ export default function App() {
             onKickPlayer={handleKickPlayer}
             onSwitchMode={handleSwitchMode}
             onExitAdmin={handleExitAdmin}
+            onUpdateHostNetwork={handleUpdateHostNetwork}
           />
         ) : activePlayer ? (
           /* Case 2: Player Controller Interface (mobile/desktop student view) */
@@ -398,10 +407,24 @@ export default function App() {
         questions={gameState.questions}
         words={gameState.wordList}
         projectSummary={gameState.projectSummary}
+        hostIp={gameState.hostIp}
+        hostPort={gameState.hostPort}
+        detectedIps={gameState.detectedIps}
         onUpdateSettings={handleUpdateSettings}
         onUpdateQuestions={handleUpdateQuestions}
         onUpdateWords={handleUpdateWords}
         onUpdateProjectSummary={handleUpdateProjectSummary}
+        onUpdateHostNetwork={handleUpdateHostNetwork}
+      />
+
+      {/* Host Network & QR Code Quick Modal */}
+      <NetworkConfigModal
+        isOpen={isNetworkConfigOpen}
+        onClose={() => setIsNetworkConfigOpen(false)}
+        currentHostIp={gameState.hostIp}
+        currentHostPort={gameState.hostPort}
+        detectedIps={gameState.detectedIps}
+        onUpdateNetwork={handleUpdateHostNetwork}
       />
 
       {/* Local Wi-Fi Hotspot & Network Guide Modal */}

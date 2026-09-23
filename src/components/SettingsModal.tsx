@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { AdminSettings, QuizQuestion, WordGuessItem, ProjectSummary, SummaryPoint } from '../types';
+import { AdminSettings, QuizQuestion, WordGuessItem, ProjectSummary, SummaryPoint, NetworkInterfaceInfo } from '../types';
 import { sound } from '../utils/audio';
 import { DEFAULT_QUESTIONS, DEFAULT_WORDS, DEFAULT_PROJECT_SUMMARY } from '../data/defaultData';
+import { QRCodeDisplay } from './QRCodeDisplay';
 import {
   X,
   Plus,
@@ -14,7 +15,12 @@ import {
   BookOpen,
   HelpCircle,
   CheckCircle2,
-  FileText
+  FileText,
+  Wifi,
+  Radio,
+  Copy,
+  Check,
+  Laptop
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -24,10 +30,14 @@ interface SettingsModalProps {
   questions: QuizQuestion[];
   words: WordGuessItem[];
   projectSummary: ProjectSummary;
+  hostIp?: string;
+  hostPort?: number;
+  detectedIps?: NetworkInterfaceInfo[];
   onUpdateSettings: (settings: Partial<AdminSettings>) => void;
   onUpdateQuestions: (questions: QuizQuestion[]) => void;
   onUpdateWords: (words: WordGuessItem[]) => void;
   onUpdateProjectSummary: (summary: Partial<ProjectSummary>) => void;
+  onUpdateHostNetwork?: (hostIp: string, hostPort: number) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -37,12 +47,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   questions,
   words,
   projectSummary,
+  hostIp = '127.0.0.1',
+  hostPort = 3000,
+  detectedIps = [],
   onUpdateSettings,
   onUpdateQuestions,
   onUpdateWords,
-  onUpdateProjectSummary
+  onUpdateProjectSummary,
+  onUpdateHostNetwork
 }) => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'params' | 'questions' | 'words'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'params' | 'questions' | 'words' | 'network'>('summary');
+  const [customIp, setCustomIp] = useState(hostIp);
+  const [customPort, setCustomPort] = useState(hostPort.toString());
+  const [networkSaved, setNetworkSaved] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   // Question form state
   const [newQuestionText, setNewQuestionText] = useState('');
@@ -233,6 +251,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <span>🔤</span>
             <span>Mystery Words ({words.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('network')}
+            className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'network'
+                ? 'border-cyan-500 text-cyan-400'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            <span>Wi-Fi IP &amp; QR Code</span>
           </button>
         </div>
 
@@ -736,6 +767,163 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: WI-FI NETWORK & QR CODE */}
+          {activeTab === 'network' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="font-bold text-white">Local Wi-Fi Host IP &amp; QR Code Configuration</span>
+                <span className="text-emerald-400 font-semibold">Updates live across all screens</span>
+              </div>
+
+              {/* QR Code & URL Preview */}
+              <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl flex flex-col sm:flex-row items-center gap-5">
+                <div className="bg-white p-2.5 rounded-xl shadow shrink-0">
+                  <QRCodeDisplay text={`http://${customIp.trim() || '127.0.0.1'}:${parseInt(customPort, 10) || 3000}`} size={130} />
+                </div>
+                <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Current Joining URL:
+                  </span>
+                  <div className="font-mono text-lg font-black text-emerald-400 select-all bg-slate-900 px-3 py-1.5 rounded-xl border border-emerald-500/30">
+                    http://{customIp.trim() || '127.0.0.1'}:{parseInt(customPort, 10) || 3000}
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Students connect their phone to your Wi-Fi hotspot and scan the QR code or enter this address.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(`http://${customIp.trim() || '127.0.0.1'}:${parseInt(customPort, 10) || 3000}`);
+                        setCopiedUrl(true);
+                        sound.playButtonPress();
+                        setTimeout(() => setCopiedUrl(false), 2000);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition"
+                  >
+                    {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedUrl ? 'Copied!' : 'Copy URL'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Detected Adapters */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Laptop className="w-4 h-4 text-indigo-400" />
+                  <span>Detected Adapters on this PC ({detectedIps.length}):</span>
+                </label>
+                {detectedIps.length === 0 ? (
+                  <p className="text-xs text-slate-500">No external network interfaces detected.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {detectedIps.map(iface => {
+                      const isSelected = customIp.trim() === iface.address;
+                      return (
+                        <button
+                          key={`${iface.name}-${iface.address}`}
+                          type="button"
+                          onClick={() => {
+                            setCustomIp(iface.address);
+                            if (onUpdateHostNetwork) {
+                              onUpdateHostNetwork(iface.address, parseInt(customPort, 10) || 3000);
+                            }
+                            sound.playButtonPress();
+                            setNetworkSaved(true);
+                            setTimeout(() => setNetworkSaved(false), 2000);
+                          }}
+                          className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${
+                            isSelected
+                              ? 'bg-emerald-950/50 border-emerald-500 text-white'
+                              : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <Wifi className={`w-3.5 h-3.5 ${iface.isHotspotOrWifi ? 'text-emerald-400' : 'text-slate-400'}`} />
+                              <span className="font-bold text-xs truncate">{iface.name}</span>
+                              {iface.isHotspotOrWifi && (
+                                <span className="text-[9px] px-1 bg-emerald-500/20 text-emerald-300 rounded font-semibold">
+                                  Hotspot
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-mono text-xs text-emerald-400 font-bold block mt-0.5">
+                              {iface.address}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual IP / Port Input */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                  Manual IP Address / Domain &amp; Port:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      IPv4 Address or Hostname:
+                    </label>
+                    <input
+                      type="text"
+                      value={customIp}
+                      onChange={e => setCustomIp(e.target.value)}
+                      placeholder="e.g. 192.168.43.1"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      Port:
+                    </label>
+                    <input
+                      type="number"
+                      value={customPort}
+                      onChange={e => setCustomPort(e.target.value)}
+                      placeholder="3000"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const port = parseInt(customPort, 10) || 3000;
+                      if (onUpdateHostNetwork && customIp.trim()) {
+                        onUpdateHostNetwork(customIp.trim(), port);
+                      }
+                      sound.playButtonPress();
+                      setNetworkSaved(true);
+                      setTimeout(() => setNetworkSaved(false), 2500);
+                    }}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                  >
+                    {networkSaved ? (
+                      <>
+                        <Check className="w-4 h-4 text-white" />
+                        <span>Saved to Host!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Apply &amp; Update QR Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}

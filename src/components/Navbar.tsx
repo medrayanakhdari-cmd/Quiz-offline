@@ -17,6 +17,7 @@ interface NavbarProps {
   onToggleSound: () => void;
   onOpenSettings?: () => void;
   onOpenNetworkHelp: () => void;
+  onOpenNetworkConfig?: () => void;
   onSwitchMode?: (mode: GameMode) => void;
   onExitAdmin?: () => void;
   onExitUser?: () => void;
@@ -34,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleSound,
   onOpenSettings,
   onOpenNetworkHelp,
+  onOpenNetworkConfig,
   onSwitchMode,
   onExitAdmin,
   onExitUser
@@ -142,14 +144,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             id="nav-network-info-btn"
             onClick={() => {
               sound.playButtonPress();
-              onOpenNetworkHelp();
+              if (isAdmin && onOpenNetworkConfig) {
+                onOpenNetworkConfig();
+              } else {
+                onOpenNetworkHelp();
+              }
             }}
             className="flex items-center gap-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 transition"
-            title="Local Wi-Fi LAN / Hotspot IP Address"
+            title={isAdmin ? "Click to modify Wi-Fi IP & QR Code" : "Local Wi-Fi LAN / Hotspot IP Address"}
           >
             <Wifi className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden md:inline text-slate-400">Wi-Fi LAN:</span>
             <span className="font-mono text-emerald-300">{hostIp}:{hostPort}</span>
+            {isAdmin && <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1 rounded font-bold">Edit</span>}
           </button>
 
           {/* Connected players counter */}

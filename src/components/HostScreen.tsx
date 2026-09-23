@@ -5,6 +5,7 @@ import { sound } from '../utils/audio';
 import { QRCodeDisplay } from './QRCodeDisplay';
 import { ProjectSummaryView } from './ProjectSummaryView';
 import { AvatarDisplay } from './AvatarDisplay';
+import { NetworkConfigModal } from './NetworkConfigModal';
 import {
   Play,
   SkipForward,
@@ -24,7 +25,9 @@ import {
   LogOut,
   Crown,
   Medal,
-  Award
+  Award,
+  Edit3,
+  Radio
 } from 'lucide-react';
 
 interface HostScreenProps {
@@ -43,6 +46,7 @@ interface HostScreenProps {
   onKickPlayer: (playerId: string) => void;
   onSwitchMode?: (mode: 'briefing' | 'quiz' | 'word_guess') => void;
   onExitAdmin?: () => void;
+  onUpdateHostNetwork?: (hostIp: string, hostPort: number) => void;
 }
 
 const SHAPES = [
@@ -66,9 +70,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({
   onOpenSettings,
   onKickPlayer,
   onSwitchMode,
-  onExitAdmin
+  onExitAdmin,
+  onUpdateHostNetwork
 }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isNetworkConfigOpen, setIsNetworkConfigOpen] = useState(false);
   const playersList = Object.values(gameState.players);
   const totalPlayers = playersList.length;
   const answeredCount = playersList.filter(p => p.hasAnswered).length;
@@ -93,16 +99,28 @@ export const HostScreen: React.FC<HostScreenProps> = ({
   // ==========================================
   if (gameState.mode === 'briefing') {
     return (
-      <ProjectSummaryView
-        summary={gameState.projectSummary}
-        isAdmin={true}
-        players={playersList}
-        onStartQuiz={() => {
-          if (onSwitchMode) onSwitchMode('quiz');
-          onStartQuiz();
-        }}
-        onOpenEditSummary={onOpenSettings}
-      />
+      <>
+        <ProjectSummaryView
+          summary={gameState.projectSummary}
+          isAdmin={true}
+          players={playersList}
+          onStartQuiz={() => {
+            if (onSwitchMode) onSwitchMode('quiz');
+            onStartQuiz();
+          }}
+          onOpenEditSummary={onOpenSettings}
+        />
+        <NetworkConfigModal
+          isOpen={isNetworkConfigOpen}
+          onClose={() => setIsNetworkConfigOpen(false)}
+          currentHostIp={gameState.hostIp}
+          currentHostPort={gameState.hostPort}
+          detectedIps={gameState.detectedIps}
+          onUpdateNetwork={(ip, port) => {
+            if (onUpdateHostNetwork) onUpdateHostNetwork(ip, port);
+          }}
+        />
+      </>
     );
   }
 
@@ -134,9 +152,23 @@ export const HostScreen: React.FC<HostScreenProps> = ({
                 <p className="text-slate-300 text-sm sm:text-base">
                   Connect to the host PC Wi-Fi and open the URL below in your browser:
                 </p>
-                <div className="inline-flex items-center gap-2 bg-slate-950/80 border border-indigo-500/40 px-4 py-2 rounded-xl text-emerald-400 font-mono font-black text-xl sm:text-2xl shadow-inner">
-                  <Wifi className="w-5 h-5 text-emerald-400 animate-pulse" />
-                  <span>{hostUrl}</span>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="inline-flex items-center gap-2 bg-slate-950/80 border border-indigo-500/40 px-4 py-2 rounded-xl text-emerald-400 font-mono font-black text-xl sm:text-2xl shadow-inner">
+                    <Wifi className="w-5 h-5 text-emerald-400 animate-pulse" />
+                    <span>{hostUrl}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playButtonPress();
+                      setIsNetworkConfigOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow border border-indigo-400/40 transition hover:scale-105 active:scale-95"
+                    title="Change IP or adapter for QR Code"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit IP / QR</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -145,6 +177,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({
             <div className="bg-white p-3.5 rounded-2xl shadow-2xl z-10 flex flex-col items-center">
               <QRCodeDisplay text={hostUrl} size={160} />
               <span className="text-[11px] font-bold text-slate-800 mt-1">Scan to join now</span>
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playButtonPress();
+                  setIsNetworkConfigOpen(true);
+                }}
+                className="mt-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 hover:underline"
+              >
+                <Edit3 className="w-3 h-3" />
+                <span>Modify IP</span>
+              </button>
             </div>
           </div>
 
@@ -219,6 +262,18 @@ export const HostScreen: React.FC<HostScreenProps> = ({
                   <SettingsIcon className="w-4 h-4 text-indigo-400" />
                   <span>Configure Questions &amp; Timers</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playButtonPress();
+                    setIsNetworkConfigOpen(true);
+                  }}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-xl text-sm font-semibold transition flex items-center gap-2 border border-emerald-500/30"
+                >
+                  <Wifi className="w-4 h-4 text-emerald-400" />
+                  <span>Wi-Fi IP &amp; QR Settings</span>
+                </button>
               </div>
 
               <button
@@ -235,6 +290,18 @@ export const HostScreen: React.FC<HostScreenProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Network Config Modal */}
+          <NetworkConfigModal
+            isOpen={isNetworkConfigOpen}
+            onClose={() => setIsNetworkConfigOpen(false)}
+            currentHostIp={gameState.hostIp}
+            currentHostPort={gameState.hostPort}
+            detectedIps={gameState.detectedIps}
+            onUpdateNetwork={(ip, port) => {
+              if (onUpdateHostNetwork) onUpdateHostNetwork(ip, port);
+            }}
+          />
         </div>
       );
     }

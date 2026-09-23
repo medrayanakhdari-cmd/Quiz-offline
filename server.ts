@@ -5,42 +5,92 @@ import os from 'os';
 import { Server, Socket } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import { DEFAULT_QUESTIONS, DEFAULT_WORDS, DEFAULT_PROJECT_SUMMARY } from './src/data/defaultData';
-import { GameState, Player, QuizQuestion, WordGuessItem, AdminSettings, ProjectSummary } from './src/types';
+import { GameState, Player, QuizQuestion, WordGuessItem, AdminSettings, ProjectSummary, NetworkInterfaceInfo } from './src/types';
 
-// Helper to determine the local LAN IPv4 address (e.g. for Wi-Fi hotspot)
-function getLocalIpAddress(): string {
+// Helper to scan and categorize all local network interfaces (Wi-Fi, Mobile Hotspot, Ethernet, etc.)
+function getDetectedInterfaces(): NetworkInterfaceInfo[] {
   const interfaces = os.networkInterfaces();
-  const candidateIps: string[] = [];
+  const list: NetworkInterfaceInfo[] = [];
 
   for (const name of Object.keys(interfaces)) {
     const ifaceList = interfaces[name];
     if (!ifaceList) continue;
     for (const iface of ifaceList) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        candidateIps.push(iface.address);
+        const lower = name.toLowerCase();
+        // Identify hotspot, Wi-Fi, or WLAN
+        const isHotspotOrWifi =
+          lower.includes('wi-fi') ||
+          lower.includes('wifi') ||
+          lower.includes('wlan') ||
+          lower.includes('wireless') ||
+          lower.includes('hotspot') ||
+          lower.includes('local area connection*') ||
+          lower.includes('ap') ||
+          name === 'en0'; // default Mac Wi-Fi
+
+        // Filter out obvious hypervisor / container virtual bridges unless nothing else exists
+        const isVirtual =
+          lower.includes('vethernet') ||
+          lower.includes('docker') ||
+          lower.includes('vmnet') ||
+          lower.includes('vbox') ||
+          lower.includes('loopback');
+
+        list.push({
+          name: `${name}${isVirtual ? ' (Virtual)' : ''}`,
+          address: iface.address,
+          isHotspotOrWifi: isHotspotOrWifi && !isVirtual
+        });
       }
     }
   }
 
-  // Prioritize typical hotspot/private LAN ranges
-  const privateIp = candidateIps.find(ip => 
-    ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')
-  );
+  return list;
+}
 
-  return privateIp || candidateIps[0] || '127.0.0.1';
+function getBestLocalIp(): { ip: string; interfaces: NetworkInterfaceInfo[] } {
+  const interfaces = getDetectedInterfaces();
+
+  // 1. Priority: Active Wi-Fi or Hotspot interfaces
+  const wifiIface = interfaces.find(i => i.isHotspotOrWifi);
+  if (wifiIface) {
+    return { ip: wifiIface.address, interfaces };
+  }
+
+  // 2. Priority: Standard private IPv4 (192.168.x.x, 10.x.x.x, 172.x.x.x) excluding Virtual
+  const nonVirtualPrivate = interfaces.find(i => 
+    !i.name.toLowerCase().includes('(virtual)') &&
+    !i.name.toLowerCase().includes('docker') &&
+    (i.address.startsWith('192.168.') || i.address.startsWith('10.') || i.address.startsWith('172.'))
+  );
+  if (nonVirtualPrivate) {
+    return { ip: nonVirtualPrivate.address, interfaces };
+  }
+
+  // 3. Fallback to any detected non-internal IP
+  if (interfaces.length > 0) {
+    return { ip: interfaces[0].address, interfaces };
+  }
+
+  return { ip: '127.0.0.1', interfaces: [{ name: 'Localhost', address: '127.0.0.1' }] };
 }
 
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
+  // Configure Socket.IO for smooth high-concurrency LAN/Hotspot performance (23+ players simultaneously)
   const io = new Server(server, {
-    cors: { origin: '*' }
+    cors: { origin: '*' },
+    pingInterval: 10000,
+    pingTimeout: 30000,
+    maxHttpBufferSize: 1e6
   });
   const PORT = 3000;
 
   app.use(express.json());
 
-  const hostIp = getLocalIpAddress();
+  const { ip: hostIp, interfaces: detectedIps } = getBestLocalIp();
 
   // Initial Game State
   const state: GameState = {
@@ -66,8 +116,37 @@ async function startServer() {
     correctWordGuessesCount: 0,
     hostIp,
     hostPort: PORT,
+    detectedIps,
     questionStartTime: Date.now()
   };
+
+  // REST endpoints for network information & updating
+  app.get('/api/network-interfaces', (_req, res) => {
+    state.detectedIps = getDetectedInterfaces();
+    res.json({
+      currentHostIp: state.hostIp,
+      currentHostPort: state.hostPort,
+      detectedIps: state.detectedIps
+    });
+  });
+
+  app.post('/api/update-network', (req, res) => {
+    const { hostIp: newIp, hostPort: newPort } = req.body;
+    if (newIp && typeof newIp === 'string') {
+      state.hostIp = newIp.trim();
+    }
+    if (newPort && Number(newPort) > 0) {
+      state.hostPort = Number(newPort);
+    }
+    state.detectedIps = getDetectedInterfaces();
+    broadcastState();
+    res.json({
+      success: true,
+      hostIp: state.hostIp,
+      hostPort: state.hostPort,
+      detectedIps: state.detectedIps
+    });
+  });
 
   let timerInterval: NodeJS.Timeout | null = null;
   let adminSocketId: string | null = null;
@@ -197,10 +276,12 @@ async function startServer() {
 
   // REST API Routes
   app.get('/api/network-info', (_req, res) => {
+    const ip = state.hostIp || getBestLocalIp();
+    const port = state.hostPort || PORT;
     res.json({
-      ip: getLocalIpAddress(),
-      port: PORT,
-      url: `http://${getLocalIpAddress()}:${PORT}`
+      ip,
+      port,
+      url: `http://${ip}:${port}`
     });
   });
 
@@ -452,6 +533,18 @@ async function startServer() {
       broadcastState();
     });
 
+    // ADMIN: Update Host Network (IP & Port for QR Code & connections)
+    socket.on('admin:update_host_network', (data: { hostIp?: string; hostPort?: number }) => {
+      if (data.hostIp && typeof data.hostIp === 'string') {
+        state.hostIp = data.hostIp.trim();
+      }
+      if (data.hostPort && typeof data.hostPort === 'number' && data.hostPort > 0) {
+        state.hostPort = data.hostPort;
+      }
+      state.detectedIps = getDetectedInterfaces();
+      broadcastState();
+    });
+
     // PLAYER: Toggle Ready For Quiz (in briefing/study mode)
     socket.on('player:toggle_ready_quiz', (ready?: boolean) => {
       const player = state.players[socket.id];
@@ -507,7 +600,7 @@ async function startServer() {
       if (!isAllowedPhase) return;
 
       // Prevent genuine double answers if already answered with a chosen option
-      if (player.hasAnswered && player.lastAnswer && player.lastAnswer.choiceIndex >= 0) return;
+      if (player.hasAnswered && player.lastAnswer && player.lastAnswer.choiceIndex !== undefined && player.lastAnswer.choiceIndex >= 0) return;
 
       // Ensure socket mapping is current
       if (player.id !== socket.id) {

@@ -86,6 +86,12 @@ export interface AdminSettings {
   soundEnabled: boolean;
 }
 
+export interface NetworkInterfaceInfo {
+  name: string;
+  address: string;
+  isHotspotOrWifi?: boolean;
+}
+
 export interface GameState {
   mode: GameMode;
   quizPhase: QuizPhase;
@@ -103,5 +109,6 @@ export interface GameState {
   correctWordGuessesCount: number;
   hostIp: string;
   hostPort: number;
+  detectedIps?: NetworkInterfaceInfo[];
   questionStartTime: number;
 }
